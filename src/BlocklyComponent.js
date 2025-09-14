@@ -159,6 +159,23 @@ const CUSTOM_BLOCKS = [
   'create_angled_ramp',
 ];
 
+// Add drop_ball block (robust version)
+if (!Blockly.Blocks["drop_ball"]) {
+  Blockly.Blocks["drop_ball"] = {
+    init: function () {
+      this.appendDummyInput().appendField("drop ball");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(200);
+      this.setTooltip("Drop the ball in the simulation");
+      this.setHelpUrl("");
+    },
+  };
+}
+javascriptGenerator.forBlock["drop_ball"] = function (block, generator) {
+  // Call the API to drop the ball
+  return `api.dropBall();\n`;
+};
 
 // --- Error handling for browser permission errors ---
 // (No direct fix in Blockly, but add a try/catch for workspace injection)

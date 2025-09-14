@@ -3,11 +3,13 @@ import BlocklyComponent from "./BlocklyComponent";
 
 function App() {
   const simCanvasRef = useRef(null);
+  const velocityGraphRef = useRef(null);
   const [output, setOutput] = useState("");
   const [simBall, setSimBall] = useState(null);
   const [ballRadius, setBallRadius] = useState(20);
   const [setupBall, setSetupBall] = useState(null);
   const [ballAtRest, setBallAtRest] = useState(false);
+  const [velocityData, setVelocityData] = useState([]); // Store velocity over time
   const simWidth = 500;
   const simHeight = 400;
 
@@ -22,6 +24,7 @@ function App() {
         contents: [
           { kind: "block", type: "create_ball" },
           { kind: "block", type: "set_ball_position" },
+          { kind: "block", type: "drop_ball" },
           { kind: "block", type: "set_acceleration" },
           { kind: "block", type: "set_velocity" },
           { kind: "block", type: "create_angled_ramp" },
@@ -284,6 +287,7 @@ function App() {
     setBallRadius(20);
     setSetupBall(null);
     setBallAtRest(false);
+    setVelocityData([]);
   }, []);
 
   // Animation effect: only animate if ball is not at rest
@@ -300,6 +304,7 @@ function App() {
         ctx.fillStyle = "#444";
         ctx.fillRect(0, simHeight - 10, simWidth, 10);
       }
+      // Do not clear velocity graph here; keep it until Restart Simulation is pressed
       return;
     }
     // If ball is at rest, just draw it once and do not animate
@@ -316,14 +321,22 @@ function App() {
         ctx.fillStyle = "#444";
         ctx.fillRect(0, simHeight - 10, simWidth, 10);
       }
+      // Do not clear velocity graph here; keep it until Restart Simulation is pressed
       return;
     }
     const gravity = 0.35; // restored to normal
     const restitution = 0.65;
     const minBounceV = 0.8;
     let localBall = { ...simBall };
+    let localVelocityData = [];
+    let frameCount = 0;
+    const pxPerMeter = 100; // 100 pixels = 1 meter
+    const frameRate = 60; // 60 frames per second
     function draw() {
       if (!isMounted || !simCanvasRef.current) return;
+      // Ensure these are declared at the top and only once
+      const graphHeight = 240;
+      const numberFontSize = Math.max(12, Math.min(20, Math.round(graphHeight * 0.08)));
       let { x = 0, y, vx = 0, vy = 0, color = "#2196f3" } = localBall;
       vy += gravity;
       y += vy;
@@ -354,6 +367,90 @@ function App() {
       ctx.fill();
       ctx.fillStyle = "#444";
       ctx.fillRect(0, simHeight - 10, simWidth, 10);
+      // --- Velocity graph logic ---
+      if (!atRest) {
+        // Convert vy from px/frame to m/s: vy * 60 / pxPerMeter
+        const velocityMS = Math.abs(vy) * frameRate / pxPerMeter;
+        localVelocityData.push(velocityMS);
+        setVelocityData(prev => [...prev, velocityMS]);
+        frameCount++;
+      }
+      // Draw velocity graph if ball is moving or after
+      if (velocityGraphRef.current && (localVelocityData.length > 1 || velocityData.length > 1)) {
+        const vctx = velocityGraphRef.current.getContext("2d");
+        vctx.clearRect(0, 0, simWidth, 240);
+        // Draw axes
+        vctx.strokeStyle = "#888";
+        vctx.beginPath();
+        vctx.moveTo(40, 20);
+        vctx.lineTo(40, 210);
+        vctx.lineTo(simWidth - 10, 210);
+        vctx.stroke();
+        // Draw y-axis label (rotated)
+        vctx.save();
+        vctx.font = "bold 18px sans-serif";
+        vctx.fillStyle = "#111";
+        vctx.translate(10, 115); // move closer to y axis
+        vctx.rotate(-Math.PI / 2);
+        vctx.textAlign = "center";
+        vctx.fillText("Meters per second (m/s)", 0, 0);
+        vctx.restore();
+        // Draw x-axis label
+        vctx.save();
+        vctx.font = "bold 18px sans-serif";
+        vctx.fillStyle = "#111";
+        vctx.textAlign = "center";
+        vctx.fillText("Time (seconds)", simWidth / 2, 235);
+        vctx.restore();
+        // Draw velocity line
+        vctx.strokeStyle = "#2196f3";
+        vctx.beginPath();
+        const dataToPlot = localVelocityData.length > 1 ? localVelocityData : velocityData;
+        const maxV = Math.max(...dataToPlot, 1);
+        const totalFrames = dataToPlot.length;
+        const totalSeconds = totalFrames / frameRate;
+        for (let i = 0; i < dataToPlot.length; i++) {
+          // x: time in seconds
+          const t = i / frameRate;
+          const x = 40 + (t / (totalSeconds || 1)) * (simWidth - 60);
+          // y: velocity in m/s
+          const y = 210 - (dataToPlot[i] / maxV) * 180;
+          if (i === 0) vctx.moveTo(x, y);
+          else vctx.lineTo(x, y);
+        }
+        vctx.stroke();
+        // Dynamically set font size for axis numbers based on graph height
+        const graphHeight = 240;
+        const numberFontSize = Math.max(12, Math.min(20, Math.round(graphHeight * 0.08)));
+        // Draw x-axis ticks and numbers (every 0.5s)
+        vctx.font = `bold ${numberFontSize}px sans-serif`;
+        vctx.fillStyle = "#111";
+        vctx.textAlign = "center";
+        for (let t = 0; t <= totalSeconds; t += 0.5) {
+          const x = 40 + (t / (totalSeconds || 1)) * (simWidth - 60);
+          vctx.beginPath();
+          vctx.moveTo(x, 210);
+          vctx.lineTo(x, 215);
+          vctx.strokeStyle = "#888";
+          vctx.stroke();
+          // Draw number just below the tick, always inside canvas
+          vctx.fillStyle = "#111";
+          vctx.fillText(t.toFixed(1), x, 215 + numberFontSize + 2);
+        }
+        // Draw y-axis ticks and numbers (every 1 m/s)
+        vctx.textAlign = "right";
+        for (let v = 0; v <= maxV; v += 1) {
+          const y = 210 - (v / maxV) * 180;
+          vctx.beginPath();
+          vctx.moveTo(35, y);
+          vctx.lineTo(40, y);
+          vctx.strokeStyle = "#888";
+          vctx.stroke();
+          // Draw number just left of the tick, always inside canvas
+          vctx.fillStyle = "#111";
+          vctx.fillText(v.toFixed(0), 32, y + numberFontSize / 2 - 2);
+        }
+      }
       if (!atRest && isMounted) {
         animationId = requestAnimationFrame(draw);
       } else {
@@ -369,6 +466,19 @@ function App() {
     };
   }, [simBall, ballAtRest, ballRadius, simWidth, simHeight]);
 
+  // Only clear velocity graph and data on Restart Simulation
+  const handleRestart = () => {
+    setOutput("");
+    setBallAtRest(false);
+    setSimBall(null);
+    setSetupBall(null);
+    setVelocityData([]);
+    if (velocityGraphRef.current) {
+      const ctx = velocityGraphRef.current.getContext("2d");
+      ctx.clearRect(0, 0, simWidth, 240);
+    }
+  };
+
   return (
     <div style={{ height: "100vh", width: "100vw", overflow: "hidden" }}>
       <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden" }}>
@@ -382,6 +492,13 @@ function App() {
             width={simWidth}
             height={simHeight}
             style={{ border: "2px solid #333", background: "#eee", maxWidth: "100%", height: "auto" }}
+          />
+          <h3>Velocity Graph</h3>
+          <canvas
+            ref={velocityGraphRef}
+            width={simWidth}
+            height={240}
+            style={{ border: "2px solid #333", background: "#fff", maxWidth: "100%", height: "240px", marginTop: 8, display: velocityData.length > 1 ? 'block' : 'none' }}
           />
           <h3>Output</h3>
           <pre style={{ background: "#eee", padding: "5px", maxHeight: 200, overflow: "auto" }}>{output}</pre>
@@ -409,13 +526,7 @@ function App() {
             Run Code
           </button>
           <button
-            onClick={() => {
-              setOutput("");
-              setBallAtRest(false);
-              setSimBall(null);
-              setSetupBall(null);
-              // Do NOT clear or touch the workspace or code here
-            }}
+            onClick={handleRestart}
             style={{ background: '#2196f3', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', transition: 'background 0.2s' }}
             onMouseOver={e => e.currentTarget.style.background = '#1769aa'}
             onMouseOut={e => e.currentTarget.style.background = '#2196f3'}
