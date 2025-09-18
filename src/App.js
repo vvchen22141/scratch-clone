@@ -144,6 +144,25 @@ function App() {
     };
   }, [simBall, ballRadius]);
 
+  // MATLAB plot image in corner
+  function MatlabPlotCorner({ width }) {
+    return (
+      <img
+        src="/plot.png"
+        alt="MATLAB Plot"
+        style={{
+          display: "block",
+          width: width || "100%",
+          height: "auto",
+          marginTop: 16,
+          border: "2px solid #333",
+          background: "#fff",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+        }}
+      />
+    );
+  }
+
   return (
     <div style={{ height: "100vh", width: "100vw" }}>
       <div style={{ display: "flex", height: "100vh" }}>
@@ -161,6 +180,7 @@ function App() {
             height={simHeight}
             style={{ border: "2px solid #333", background: "#eee" }}
           />
+          <MatlabPlotCorner width={simWidth} />
 
           <h3>Output</h3>
           <pre style={{ background: "#eee", padding: "5px" }}>{output}</pre>
